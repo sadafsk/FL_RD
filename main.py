@@ -1,24 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[4]:
-
-# TODO
-#
-# check test accuracy 
-# SS2SR:
-# check that when you sparsify you don't redure to one value, otherwise s goes to zero and the sampled values go to infinty by dividing by zero
-#
-# sparsification decided at the PS and the step t-1
-# skip small layers for speeding up things
-#  
-# check bach role#
-# step 2
-# properly save models for when we change paraters 
-#
-# step 3
-# adapt rate per layer?
-# 
 
 
 
@@ -49,9 +28,6 @@ from tensorflow.keras.layers import Dropout
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras import layers
-#from sklearn.cluster import KMeans
-#from pyclustering.cluster.kmeans import kmeans
-#from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
 from scipy.integrate import quad
 
 #------------------------------
@@ -65,7 +41,7 @@ iterations = 10
 sparsification_percentage = 45.2
 
 
-# sparse_gradient[0].shape
+# DNN layers to be compressed
 
 layers_to_be_compressed=np.array([6,12,18,24,30,36,42])
 
@@ -76,17 +52,9 @@ compression_type="k-means"
 
 number_of_users = 2
 
-# un-used
-# TODO
-# add function to compute the rates attainable over the symmetric MAC computation thing
-#
-#power=150
-#noise_variance=0.5
-#
-#channel_coefficients=np.array([10,5])
 
 
-# In[5]:
+# definition of the DNN model
 
 model = tf.keras.Sequential([
   layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_uniform', padding='same', input_shape=(32, 32, 3)),
@@ -118,7 +86,7 @@ model.compile(optimizer=opt, loss='categorical_crossentropy', metrics=['accuracy
 
 model.summary()
 
-# In[7]:
+# definition of the classes
 
 classes = {
     0 : "airplane",
@@ -134,16 +102,10 @@ classes = {
 }
 
 
-# In[8]:
-
-# SR2NSS
-# too many epocs in between exchanges: the accuracy already becomes 70% locally
-#
-# let's try less and see if
-# epochs = 20
 
 
-# In[9]:
+
+# splitting data into train and test datasets
 
 
 def train_validation_split(X_train, Y_train):
@@ -156,7 +118,7 @@ def train_validation_split(X_train, Y_train):
     return X_train, Y_train, X_validation, Y_validation
 
 
-# In[10]:
+# topK sparsification function
 
 
 def top_k_sparsificate_model_weights_tf(weights, fraction):
@@ -165,9 +127,6 @@ def top_k_sparsificate_model_weights_tf(weights, fraction):
         lay_list = el.reshape((-1)).tolist()
         tmp_list = tmp_list + [abs(el) for el in lay_list]
     tmp_list.sort(reverse=True)
-    #TODO
-    # same as weight.reshape.size[0] ? better make it more general
-    # write as in 183
     k_th_element = tmp_list[int(fraction*552874)-1] # 552874 is the number of parameters of the CNNs!
     new_weights = []
     for el in weights:
@@ -179,8 +138,12 @@ def top_k_sparsificate_model_weights_tf(weights, fraction):
         new_weights.append(reshaped_el.reshape(original_shape))
     return new_weights
 
+#GenNorm pdf function  
+  
 def pdf_gennorm(x, a, m, b):
   return stats.gennorm.pdf(x,a,m,b)
+
+#Kmeans algorithm adapted to the distortion metrix \sum |g|^M|g-\hat{g}|^2
 
 def update_centers_magnitude_distance(data, R, iterations_kmeans):
     a, m, b = stats.gennorm.fit(data)
@@ -238,78 +201,17 @@ for i in range(number_of_users):
     train_data_Y[i] = Y_train[size_of_user_ds*i:size_of_user_ds*i+size_of_user_ds]
     
 
-# -----------------------------------------------------------------------------
-# set up the file saving
-# -----------------------------------------------------------------------------
-
-
-#
-## prepare PD
-#import pandas as pd
-#
-#from datetime import datetime
-#
-#
-#now = datetime.now() # current date and time
-#
-#date_time = now.strftime("%Y_%m_%d_%H_%M")
-#             
-#file_name='sim/sim_'+date_time+'.xlsx'
-#
-#dict_data = ["SNR", "Pue_1 AMP", "Pue_2 AMP","Pue_1 ADMM", "Pue_2 ADMM"]
-#data_pd = pd.DataFrame(columns=dict_data )
-#
-#simCount=100
-#
-#pd_settings=  pd.DataFrame([[simCount,K1, K2, L,J,M,n,2*K1 ,2*K2]],columns=['simCount','K1', 'K2', 'L','J','M','n','listSize1' ,'listSize2'])
-#
-#
-#from openpyxl import load_workbook
-#
-#with pd.ExcelWriter(file_name) as writer:
-#        
-#        # add simulation datasTrue1[i*M:(i+1)*M
-#       pd_settings.to_excel(writer, sheet_name = '0', index = False, header = False)
-#
-#
-## ------------------
-#       When saving
-#       
-#          data_tmp = pd.DataFrame([[EbNodB, errorRate1_AMP[ss], errorRate2_AMP[ss], errorRate1_ADMM[ss], errorRate2_ADMM[ss] ]],columns=dict_data)    
-#    data_pd = data_pd.append(data_tmp)
-#       
-#
-#
-#book = load_workbook(file_name)
-#writer = pd.ExcelWriter(file_name, engine='openpyxl')
-#writer.book = book # <---------------------------- piece i do not understand
-#data_pd.to_excel(writer, sheet_name="amp vs admm", index=None)
-#writer.save()
-
-# -----------------------------------------------------------------------------
-# set up the TCQ quantizer 
-# -----------------------------------------------------------------------------
-    
-# # indexed as [rate][memory]
-# lc_coeff =  getLCCoeff()
-
-# # SR2SS 
-# # you can allocate differently for each dimension of an array.
-# # in this way you don't have to loop over all layers of the network
 
 
 d=1
-# # indexed by dimenions of the input, so far we go through each layer separately
+# # compression rate
 rate = np.array([d])
 rate[0] = 4
 
-memory = np.array([d])
-memory[0] = 4
 
 
-# # this is an array too, 
-# # indexed as [rate][memory]
-# c_scale = np.ones([10,10])
+
+
 
 # -----------------------------------------------------------------------------
 iter = 0
@@ -371,12 +273,12 @@ with open("histogram-kmeans-R4.txt", "w") as outfile:
 
           print("Layer",j,": entries to compress:",non_zero_indices.size )
 
-          #SR2SS
-          # i would say >1000, no need to worry about the small dimensions her
+          
+          
           if (non_zero_indices.size > 1):
               seq = gradient_reshape[np.transpose(non_zero_indices)[0]]
 
-              #saving histogram before compression
+              #saving histogram of data before compression
               seq_max = np.amax(seq)
               seq_min = np.amin(seq)
               step_size_seq = (seq_max - seq_min) / 100
@@ -394,56 +296,10 @@ with open("histogram-kmeans-R4.txt", "w") as outfile:
                   np.savetxt(outfile, [3], header='#layer42-before comp')
                   for bin_index in range(len(bin_edges_before) - 1):
                       np.savetxt(outfile, [[bin_edges_before[bin_index], hist_before[bin_index]],], fmt='%10.3e',delimiter=',')
-              #fig1 = plt.figure()
-              #ax1 = fig1.add_subplot(1, 1, 1)
-              #ax1.hist(seq, bins=bins_array_seq)
-              #plt.xlabel('bins')
-              #plt.ylabel('histogram of original data')
-              #fig1.savefig('hist-before compression-' + 'Iter' + str(iter) + '-Layer' + str(j) + '.png')
+        
 
 
-              # SR2SS
-              # the compress method already does the fitting to the gaussian
-              #
-
-    #          lc_coeff_f =   getLCCoeff()
-    #          mu = np.mean(seq)
-    #          s = np.var(seq)
-    #          seq_scaled = np.divide(seq-mu,np.power(s,0.5))
-    #          mu_scaled = np.mean(seq_scaled)
-    #          s_scaled = np.var(seq_scaled)
-    #
-              # define memory and rate globally
-
-    #
-    #          seq_enc = quan.encode(seq_scaled)
-    #          seq_dec = recon.decode(seq_enc)
-    #
-              #SR2SS
-              # needs an array in input
-              # if pipeing dimensions, change 1 to d
-              #seq=seq.reshape([len(seq),1])
-              #seq_dec = np.zeros(np.shape(seq))
-              #if compression_type=="TCQ":
-                  #indices_positive = tf.where(seq > 0).numpy()
-                  #indices_negative = tf.where(seq < 0).numpy()
-                  #seq_positive = seq[np.transpose(indices_positive)[0]]
-                  #seq_negative = seq[np.transpose(indices_negative)[0]]
-
-                  #seq_positive_enc, sqnr_positive, mu_positive, s_positive= compress(seq_positive, rate, memory, lc_coeff, c_scale)
-                  #seq_positive_dec = decompress(seq_positive_enc, rate, memory, lc_coeff, mu_positive, s_positive, c_scale)
-
-                  #seq_negative_enc, sqnr_negative, mu_negative, s_negative = compress(seq_negative, rate, memory, lc_coeff,  c_scale)
-                  #seq_negative_dec = decompress(seq_negative_enc, rate, memory, lc_coeff, mu_negative, s_negative, c_scale)
-
-                  #np.put(seq_dec,np.transpose(indices_positive)[0],seq_positive_dec)
-                  #np.put(seq_dec,np.transpose(indices_negative)[0],seq_negative_dec)
-                  #seq = seq.reshape([len(seq), 1])
-                  #seq_enc, sqnr, mu, s = compress(seq, rate, memory, lc_coeff, c_scale)
-                  #seq_dec = decompress(seq_enc, rate, memory, lc_coeff, mu, s, c_scale)
-
-
-              elif  compression_type=="uniform scalar":
+              if  compression_type=="uniform scalar":
 
                   seq_enc, uni_max, uni_min= compress_uni_scalar(seq, rate)
 
@@ -472,8 +328,7 @@ with open("histogram-kmeans-R4.txt", "w") as outfile:
                       index_labels_false = np.where(labels == 2**rate[0])
                       labels[index_labels_false] = 2**rate[0]-1
                       seq_dec = quantization_centers[labels]
-                  # SR2SS
-                  # need to stare overything: see how it changes over layer and over time
+                  
 
               elif compression_type == "optimal compression":
                   seq_enc , mu, s = optimal_compress(seq,rate)
@@ -487,9 +342,6 @@ with open("histogram-kmeans-R4.txt", "w") as outfile:
                   seq_dec = seq.astype(np.float16)
 
 
-              # compress_decompress(type='TCQ')
-
-              #plot the histogram of data
 
 
 
@@ -513,49 +365,9 @@ with open("histogram-kmeans-R4.txt", "w") as outfile:
                   for bin_index in range(len(bin_edges_after) - 1):
                       np.savetxt(outfile, [[bin_edges_after[bin_index], hist_after[bin_index]],], fmt='%10.3e',delimiter=',')
 
-              #unique_labels, unique_indices, counts = np.unique(seq_dec,return_index=True,return_counts=True)
-              #if ((j== 12) & (i==0) & (iter==10)):
-              #    np.savetxt(outfile,[1],header='#layer12-after comp-unique')
-              #    for bin_index in range(len(unique_labels)):
-              #        np.savetxt(outfile, [[unique_labels[bin_index],counts[bin_index]],],fmt='%10.3e',delimiter=',')
-              #if ((j== 24) & (i==0) & (iter==10)):
-              #    np.savetxt(outfile,[2],header='#layer24-after comp-unique')
-              #    for bin_index in range(len(unique_labels)):
-              #        np.savetxt(outfile, [[unique_labels[bin_index],counts[bin_index]],],fmt='%10.3e', delimiter =',')
-              #if ((j == 42) & (i == 0) & (iter == 10)):
-              #    np.savetxt(outfile, [3], header='#layer42-after comp-unique')
-              #    for bin_index in range(len(unique_labels)):
-              #        np.savetxt(outfile, [[unique_labels[bin_index],counts[bin_index]],], fmt='%10.3e',delimiter=',')
-              #np.savetxt(outfile, [bin_edges_after])
-              #np.savetxt(outfile, [hist_after])
-              #fig = plt.figure()
-              #ax = fig.add_subplot(1, 1, 1)
-              #ax.hist(seq_dec, bins=bins_array)
-              #plt.xlabel('bins')
-              #plt.ylabel('histogram of quantized data')
-              #fig.savefig('hist-after compression-'+'Iter'+str(iter)+'-Layer'+ str(j)+'.png')
+              
 
-
-              # SR2SS check the noise distribution
-              #while False:
-              #np.savetxt('original_gradient_seq_iteration'+str(iter)+'_user'+str(i)+'_layer'+str(j)+'.txt', seq)
-              #np.savetxt('compressed_gradient_seq_iteration'+str(iter)+'_user'+str(i)+'_layer'+str(j)+'.txt', seq_dec)
-              #plt.hist(seq,int(np.sqrt(len(seq/10))),label='data')
-              #plt.hist(seq,int(np.sqrt(len(seq))),label='data')
-              #plt.hist(err,int(np.sqrt(len(seq))),label='err')
-              #plt.legend()
-
-              # assume noiseless, rate limited transmission,
-              # assume we send mu, s noiselessly
-              #
-              # quan = SR_LC_Int_Quantizer(memory=5, rate=4, lc_coeff=lc_coeff_f, mu=mu_scaled, s=s_scaled, c_scale = 1, distortion_measure = 'mse')
-              # recon = SR_LC_Int_Reconstructor(memory=5, rate=4, lc_coeff=lc_coeff_f, mu=mu_scaled, s=s_scaled, c_scale = 1)
-              #
-
-              # no need now
-              # gradient_reshape_quantized = np.multiply(seq_dec,np.power(s,0.5))+mu
-              # np.put(gradient_reshape, np.transpose(non_zero_indices)[0], gradient_reshape_quantized)
-
+              
               np.put(gradient_reshape, np.transpose(non_zero_indices)[0], seq_dec)
 
               sparse_gradient[j] = gradient_reshape.reshape(gradient_shape)
@@ -585,7 +397,7 @@ with open("histogram-kmeans-R4.txt", "w") as outfile:
 
 
 
-# In[ ]:
+
 
 
 
